@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>间歇计时器</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="间歇计时">
+<meta name="theme-color" content="#222222">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&display=swap" rel="stylesheet">
+<style>
+/*
+VOICE: 健身房里的计时屏，一眼看清，不多说一句话
+IDEA: TimerPlus 式的分段色块计时器，颜色就是阶段
+PICTURE: 当前阶段整块色面 + 巨大倒计时数字
+COLOUR and TYPE: 深灰底 #222；黄=准备/循环间休息，绿=锻炼，红=休息，蓝=冷却；数字用 DIN Condensed / Oswald
+LAYOUT: 顶栏 / 当前阶段 / 下一阶段 / 剩余周期·开始·剩余循环 / 小控制
+*/
+:root{color-scheme:dark;--y:#FCFF3C;--g:#9DFF45;--r:#F33B2C;--b:#3BB0EA;--bg:#222;--p:#1b1b1b;--l:#333;--m:#7a7a7a;
+--num:"DIN Condensed","Oswald","Arial Narrow",sans-serif}
+*{box-sizing:border-box;min-width:0}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:#fff;font:16px/1.4 -apple-system,"PingFang SC","Noto Sans SC",sans-serif;overflow:hidden;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;overscroll-behavior:none}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--y);outline-offset:2px}
+#app{height:100vh;height:100dvh;display:flex;flex-direction:column;max-width:560px;margin:0 auto}
+.top{padding:calc(env(safe-area-inset-top) + 6px) 10px 6px;display:grid;grid-template-columns:48px 1fr 48px;align-items:center;text-align:center}
+.top h1{margin:0;font-size:20px;color:var(--y);font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.top .tt{font:700 26px/1.05 var(--num);color:var(--y)}
+.ib{width:44px;height:44px;border:0;background:none;color:var(--y);display:grid;place-items:center;padding:0}
+.ib svg{width:30px;height:30px}
+.cur{flex:1 1 auto;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#111;padding:6px 12px;min-height:0;transition:background-color .35s}
+.cur .nm{font-weight:900;line-height:1.08;text-align:center;font-size:var(--fs);max-width:100%;overflow-wrap:anywhere}
+.cur .tm{font:700 min(36vw,25dvh)/.92 var(--num);font-variant-numeric:tabular-nums;margin-top:.04em}
+.cur .sub{font-weight:800;font-size:17px;opacity:.7;min-height:1.4em}
+.nx{padding:8px 12px 10px;text-align:center;color:#111;transition:background-color .35s}
+.nx .nm{font-weight:900;font-size:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nx .tm{font:700 50px/1 var(--num)}
+.ctl{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;padding:12px 6px 0;text-align:center}
+.cnt b{display:block;font:700 76px/1 var(--num)}
+.cnt span{font-weight:900;font-size:19px}
+.play{width:108px;height:108px;border-radius:50%;background:var(--y);border:0;display:grid;place-items:center;box-shadow:inset 0 0 0 7px var(--y),inset 0 0 0 10px #222;color:#222}
+.play svg{width:44px;height:44px}
+.plbl{display:block;color:var(--y);font-weight:900;font-size:20px;margin-top:6px}
+.sm{display:flex;justify-content:space-around;padding:2px 8px calc(env(safe-area-inset-bottom) + 6px)}
+.sm button{color:#bbb;background:none;border:0;font-size:15px;min-height:44px;display:flex;gap:4px;align-items:center;padding:0 10px}
+.sm svg{width:20px;height:20px}
+/* 编辑页 */
+.sheet{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;z-index:5}
+.sheet[hidden],.pk[hidden]{display:none}
+.bar{display:grid;grid-template-columns:76px 1fr 76px;align-items:center;padding:calc(env(safe-area-inset-top) + 4px) 8px 4px;border-bottom:1px solid var(--l);text-align:center}
+.bar b{font-size:20px}
+.bar button{background:none;border:0;font-size:20px;font-weight:800;color:var(--m);min-height:44px}
+.bar .go{color:var(--g)}
+.scrollv{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:calc(env(safe-area-inset-bottom) + 30px);max-width:560px;width:100%;margin:0 auto}
+.gh{background:#2b2b2b;color:var(--m);text-align:center;font-weight:900;font-size:19px;padding:10px;margin-top:14px}
+.gh small{display:block;font-size:13px;font-weight:600}
+.row{display:flex;align-items:center;gap:14px;padding:12px 16px;border:0;border-bottom:1px solid var(--l);width:100%;background:none;text-align:left}
+.dot{width:20px;height:20px;border-radius:50%;flex:none}
+.tx{flex:1}
+.tx b{display:block;font-size:20px;font-weight:900}
+.tx small{color:var(--m);font-size:14px;font-weight:700}
+.v{font:700 40px/1 var(--num);white-space:nowrap}
+.chev{color:#666;font-size:26px;line-height:1}
+.act{padding:10px 16px 8px;border-bottom:1px solid var(--l)}
+.act .ln{display:flex;align-items:center;gap:10px}
+.act input{flex:1;background:#2e2e2e;border:0;border-radius:8px;color:#fff;font-size:17px;font-weight:700;padding:10px;-webkit-user-select:text;user-select:text}
+.act .tb{background:#2e2e2e;border:0;border-radius:8px;font:700 26px/1 var(--num);padding:8px 10px;min-width:72px;min-height:44px}
+.act .tb.def{color:var(--m);font:700 15px/1 -apple-system,"PingFang SC",sans-serif}
+.act .ops{display:flex;justify-content:flex-end;gap:4px;margin-top:2px}
+.act .ops button{background:none;border:0;color:var(--m);font-size:14px;min-height:36px;padding:0 10px}
+.act .ops .del{color:var(--r)}
+.add{display:block;width:calc(100% - 32px);margin:12px 16px;background:none;border:2px dashed #444;border-radius:10px;color:var(--g);font-weight:900;font-size:17px;min-height:48px}
+.fld{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--l)}
+.fld label,.fld .tx{flex:1;font-weight:800;font-size:17px}
+.fld small{display:block;color:var(--m);font-size:13px;font-weight:600}
+select,.fld input[type=text]{background:#2e2e2e;color:#fff;border:0;border-radius:8px;font-size:16px;font-weight:700;padding:10px;min-height:44px}
+.fld input[type=text]{flex:1;-webkit-user-select:text;user-select:text}
+.btns{display:flex;gap:8px;padding:10px 16px}
+.btns button{flex:1;background:#2e2e2e;border:0;border-radius:8px;min-height:44px;font-weight:800}
+.btns .del{color:var(--r)}
+.sw{position:relative;width:52px;height:32px;flex:none}
+.sw input{position:absolute;opacity:0;inset:0;margin:0}
+.sw span{position:absolute;inset:0;border-radius:16px;background:#444;transition:background .2s}
+.sw span::after{content:"";position:absolute;width:26px;height:26px;top:3px;left:3px;border-radius:50%;background:#fff;transition:transform .2s}
+.sw input:checked+span{background:var(--g)}
+.sw input:checked+span::after{transform:translateX(20px)}
+.sw input:focus-visible+span{outline:2px solid var(--y);outline-offset:2px}
+.tot{text-align:center;color:var(--m);font-weight:700;margin:18px 16px 0}
+.tot b{color:#fff;font:700 28px var(--num)}
+.note{color:var(--m);font-size:13px;margin:10px 16px 0;line-height:1.5}
+/* 选择器 */
+.pk{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9;display:flex;align-items:flex-end;justify-content:center}
+.pkc{background:#2a2a2a;width:100%;max-width:560px;border-radius:16px 16px 0 0;padding-bottom:calc(env(safe-area-inset-bottom) + 14px)}
+.pkh{display:grid;grid-template-columns:76px 1fr 76px;align-items:center;padding:6px 8px;border-bottom:1px solid #3a3a3a;text-align:center}
+.pkh button{background:none;border:0;font-size:18px;font-weight:800;color:var(--m);min-height:44px}
+.pkh .go{color:var(--g)}
+.pkb{display:flex;justify-content:center;align-items:center;gap:10px;padding:22px 16px 10px;font-weight:800;font-size:18px}
+.pkb select{font:700 34px var(--num);padding:6px 14px;min-width:96px;text-align:center}
+.qk{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;padding:6px 16px}
+.qk button{background:#383838;border:0;border-radius:18px;padding:0 14px;min-height:36px;font-weight:700}
+#pkDef{display:block;margin:10px auto 0;background:none;border:0;color:var(--b);font-weight:800;min-height:44px}
+#pkDef[hidden]{display:none}
+@media (prefers-reduced-motion:reduce){.cur,.nx,.sw span,.sw span::after{transition:none}}
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="top">
+    <button class="ib" id="bEdit" aria-label="编辑训练"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+    <div><h1 id="tName"></h1><div class="tt" id="tTotal">00:00</div></div>
+    <button class="ib" id="bReset" aria-label="重置"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v5h-5"/></svg></button>
+  </header>
+  <section class="cur" id="cur"><div class="nm" id="cName"></div><div class="tm" id="cTime"></div><div class="sub" id="cSub"></div></section>
+  <section class="nx" id="nx"><div class="nm" id="nName"></div><div class="tm" id="nTime"></div></section>
+  <section class="ctl">
+    <div class="cnt"><b id="rP" style="color:var(--b)">0</b><span>剩余周期</span></div>
+    <div><button class="play" id="bPlay" aria-label="开始"><svg id="icPlay" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5z"/></svg><svg id="icPause" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="5.5" y="4.5" width="4.5" height="15" rx="1"/><rect x="14" y="4.5" width="4.5" height="15" rx="1"/></svg></button><span class="plbl" id="pLbl">开始</span></div>
+    <div class="cnt"><b id="rC" style="color:var(--y)">0</b><span>剩余循环</span></div>
+  </section>
+  <nav class="sm">
+    <button id="bPrev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg>上一段</button>
+    <button id="bNext">下一段<svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg></button>
+  </nav>
+</div>
+
+<section class="sheet" id="ed" hidden>
+  <div class="bar"><button id="edCancel">取消</button><b>编辑训练</b><button id="edSave" class="go">储存</button></div>
+  <div class="scrollv">
+    <div class="gh">训练方案</div>
+    <div class="fld"><select id="planSel" style="flex:1"></select></div>
+    <div class="fld"><input type="text" id="planName" maxlength="20" aria-label="方案名称" placeholder="方案名称"></div>
+    <div class="btns"><button id="pNew">新建</button><button id="pDup">复制</button><button id="pDel" class="del">删除</button></div>
+    <div class="gh">间隔</div>
+    <div id="rows"></div>
+    <div class="gh">动作<small>每个动作 = 1 个周期，可单独设时长</small></div>
+    <div id="acts"></div>
+    <button class="add" id="addAct">＋ 添加动作</button>
+    <div class="gh">声音与显示</div>
+    <div id="opts"></div>
+    <p class="tot">总时长 <b id="tot"></b></p>
+    <p class="note">提示：开启「与音乐混音」后可以边放音乐边计时，但手机静音键打开时计时器会没有声音。训练中请保持本页面在前台、屏幕亮着；锁屏或切到其他 App 后提示音会暂停，回来时计时会自动校准到正确位置。</p>
+  </div>
+</section>
+
+<div class="pk" id="pk" hidden>
+  <div class="pkc" role="dialog" aria-modal="true" aria-labelledby="pkT">
+    <div class="pkh"><button id="pkNo">取消</button><b id="pkT"></b><button id="pkOk" class="go">确定</button></div>
+    <div class="pkb" id="pkB"></div>
+    <div class="qk" id="pkQ"></div>
+    <button id="pkDef" hidden>使用默认锻炼时长</button>
+  </div>
+</div>
+
+<script>
+{
+const $=s=>document.querySelector(s);
+const COL={prep:'#FCFF3C',work:'#9DFF45',rest:'#F33B2C',crest:'#FCFF3C',cool:'#3BB0EA',done:'#3BB0EA'};
+const KEY='hiit-timer-v1';
+const uid=()=>Math.random().toString(36).slice(2,9);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const now=()=>performance.now();
+const defPlan=()=>({id:uid(),name:'下肢训练',prep:5,work:60,rest:15,cycles:3,crest:30,cool:30,
+  actions:[{n:'股四头肌锻炼',d:0},{n:'臀桥',d:0},{n:'靠墙静蹲',d:0},{n:'泡沫轴大腿前侧放松',d:0}]});
+const defSet={voice:true,tick:true,count:5,mix:true,wake:true,voiceURI:'',rate:1.05};
+let store=null;
+try{store=JSON.parse(localStorage.getItem(KEY))}catch(e){}
+if(!store||!Array.isArray(store.plans)||!store.plans.length){const p=defPlan();store={plans:[p],cur:p.id,set:{}}}
+store.set={...defSet,...store.set};
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(store))}catch(e){}};
+const plan=()=>store.plans.find(p=>p.id===store.cur)||store.plans[0];
+
+const mmss=s=>{s=Math.max(0,Math.ceil(s-1e-6));const m=Math.floor(s/60),x=s%60;return String(m).padStart(2,'0')+':'+String(x).padStart(2,'0')};
+const short=s=>s<60?':'+String(s).padStart(2,'0'):mmss(s);
+const sayD=s=>{const m=Math.floor(s/60),x=s%60;return m?(m+'分'+(x?x+'秒':'钟')):x+'秒'};
+
+function build(p){
+  const A=p.actions.length?p.actions:[{n:'锻炼',d:0}],P=A.length,out=[];
+  if(p.prep>0)out.push({t:'prep',name:'准备',d:p.prep,c:1,i:0});
+  for(let c=1;c<=p.cycles;c++)for(let i=0;i<P;i++){
+    out.push({t:'work',name:A[i].n.trim()||('动作'+(i+1)),d:A[i].d||p.work,c,i});
+    if(i<P-1){if(p.rest>0)out.push({t:'rest',name:'休息',d:p.rest,c,i})}
+    else if(c<p.cycles){
+      if(p.crest>0)out.push({t:'crest',name:'循环间休息',d:p.crest,c,i});
+      else if(p.rest>0)out.push({t:'rest',name:'休息',d:p.rest,c,i});
+    }
+  }
+  if(p.cool>0)out.push({t:'cool',name:'冷却',d:p.cool,c:p.cycles,i:P-1});
+  return out;
+}
+const total=segs=>segs.reduce((a,g)=>a+g.d,0);
+
+/* ---------- 声音 ---------- */
+let ac=null,primed=false,annBusy=false,annTimer=0,voices=[];
+function setSession(){try{if('audioSession' in navigator)navigator.audioSession.type=store.set.mix?'ambient':'playback'}catch(e){}}
+function unlock(){
+  setSession();
+  try{if(!ac)ac=new (window.AudioContext||window.webkitAudioContext)();if(ac.state!=='running')ac.resume()}catch(e){}
+  try{if(!primed&&'speechSynthesis' in window){const u=new SpeechSynthesisUtterance(' ');u.volume=0;speechSynthesis.speak(u);primed=true}}catch(e){}
+}
+function tone(f,dur,vol,type,at){
+  if(!ac)return;
+  try{const t=ac.currentTime+(at||0),o=ac.createOscillator(),g=ac.createGain();
+  o.type=type||'sine';o.frequency.value=f;g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(vol,t+.006);
+  g.gain.exponentialRampToValueAtTime(.0001,t+dur);o.connect(g);g.connect(ac.destination);o.start(t);o.stop(t+dur+.03)}catch(e){}
+}
+const tick=s=>{tone(s%2?1900:1400,.035,.5,'triangle');tone(s%2?3800:2800,.02,.12,'sine')};
+const beepStart=()=>{tone(880,.16,.5);tone(1320,.32,.5,'sine',.18)};
+const beepShort=()=>tone(1046,.12,.45);
+const beepEnd=()=>{[0,.22,.44].forEach(a=>tone(1320,.16,.5,'sine',a));tone(1760,.6,.5,'sine',.7)};
+function loadVoices(){try{voices=speechSynthesis.getVoices().filter(v=>/^(zh|cmn)/i.test(v.lang))}catch(e){voices=[]}}
+if('speechSynthesis' in window){loadVoices();speechSynthesis.onvoiceschanged=()=>{loadVoices();if(!$('#ed').hidden)renderOpts()}}
+const pickVoice=set=>voices.find(v=>v.voiceURI===set.voiceURI)||voices.find(v=>/zh[-_]CN/i.test(v.lang))||voices[0];
+function speak(t,o={}){
+  const set=o.set||store.set;
+  if(!set.voice||!('speechSynthesis' in window))return;
+  try{
+    if(o.cancel)speechSynthesis.cancel();
+    const u=new SpeechSynthesisUtterance(t);u.lang='zh-CN';const v=pickVoice(set);if(v)u.voice=v;u.rate=set.rate;
+    if(o.ann){annBusy=true;clearTimeout(annTimer);annTimer=setTimeout(()=>annBusy=false,7000);u.onend=u.onerror=()=>{annBusy=false;clearTimeout(annTimer)}}
+    speechSynthesis.speak(u);
+  }catch(e){}
+}
+
+/* ---------- 屏幕常亮 ---------- */
+let wl=null;
+async function wake(on){
+  try{
+    if(on&&store.set.wake&&'wakeLock' in navigator&&!wl){wl=await navigator.wakeLock.request('screen');wl.addEventListener('release',()=>{wl=null})}
+    if(!on&&wl){const w=wl;wl=null;await w.release()}
+  }catch(e){}
+}
+
+/* ---------- 计时引擎 ---------- */
+let segs=[],idx=0,left=0,endAt=0,running=false,finished=false,lastSec=-1,announced=-1;
+function load(){segs=build(plan());idx=0;left=segs.length?segs[0].d:0;running=false;finished=!segs.length;lastSec=-1;announced=-1;render()}
+const remNow=()=>finished?0:running?Math.max(0,(endAt-now())/1000):left;
+const nextWork=i=>segs.slice(i+1).find(x=>x.t==='work');
+function annText(i){
+  const g=segs[i],nx=nextWork(i);
+  switch(g.t){
+    case'prep':return'准备'+(nx?'，第一个动作，'+nx.name:'');
+    case'work':return(g.i===0&&g.c>1?'第'+g.c+'轮，':'')+g.name+'，'+sayD(g.d);
+    case'rest':return'休息'+sayD(g.d)+(nx?'，下一个，'+nx.name:'');
+    case'crest':return'第'+g.c+'轮完成，休息'+sayD(g.d)+(nx?'，下一轮，'+nx.name:'');
+    case'cool':return'冷却'+sayD(g.d);
+  }
+  return'';
+}
+function enter(i){announced=i;beepStart();speak(annText(i),{ann:true,cancel:true})}
+function secondCue(s){
+  const g=segs[idx],set=store.set;
+  if(!g||s>=g.d||s<=0)return;
+  const n=set.count;
+  if(set.voice&&n&&s<=n&&!annBusy){speak(String(s),{cancel:true});return}
+  if(set.voice&&s===10&&n<10&&g.d>=20&&!annBusy){speak('还剩10秒',{cancel:true});return}
+  if((!set.voice||!n)&&s<=3){beepShort();return}
+  if(set.tick)tick(s);
+}
+function start(){
+  unlock();
+  if(finished)load();
+  if(!segs.length)return;
+  running=true;endAt=now()+left*1000;lastSec=Math.ceil(left);
+  if(announced!==idx&&left>=segs[idx].d-.05)enter(idx);
+  wake(true);render();
+}
+function pause(){if(!running)return;left=remNow();running=false;try{speechSynthesis.cancel()}catch(e){}wake(false);render()}
+function finish(){running=false;finished=true;left=0;beepEnd();speak('训练完成，辛苦了',{cancel:true});wake(false);render()}
+function jump(i){
+  if(i<0)i=0;
+  if(i>=segs.length){finish();return}
+  idx=i;left=segs[i].d;finished=false;lastSec=Math.ceil(left);
+  if(running){endAt=now()+left*1000;enter(i)}else announced=-1;
+  render();
+}
+function step(){
+  if(!running)return;
+  let rem=(endAt-now())/1000;
+  if(rem<=0){
+    let over=-rem;idx++;
+    while(idx<segs.length&&over>=segs[idx].d){over-=segs[idx].d;idx++}
+    if(idx>=segs.length){finish();return}
+    rem=segs[idx].d-over;endAt=now()+rem*1000;lastSec=Math.ceil(rem);
+    if(over<2)enter(idx);else announced=idx;
+    render();return;
+  }
+  const s=Math.ceil(rem);
+  if(s!==lastSec){lastSec=s;secondCue(s);render()}
+}
+setInterval(step,100);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&running){wake(true);if(ac&&ac.state!=='running')ac.resume();step();render()}});
+
+/* ---------- 主界面 ---------- */
+function render(){
+  const p=plan(),P=Math.max(1,p.actions.length),g=finished?null:segs[idx],rem=remNow();
+  $('#tName').textContent=p.name||'间歇训练';
+  $('#tTotal').textContent=mmss(rem+(g?segs.slice(idx+1).reduce((a,x)=>a+x.d,0):0));
+  const cur=$('#cur'),name=g?g.name:'完成';
+  cur.style.backgroundColor=g?COL[g.t]:COL.done;
+  $('#cName').textContent=name;
+  const L=[...name].length;cur.style.setProperty('--fs',L<=3?'min(19vw,96px)':L<=5?'min(14vw,76px)':L<=8?'min(10vw,56px)':'min(8vw,44px)');
+  $('#cTime').textContent=mmss(rem);
+  let sub='';
+  if(g&&g.t==='work')sub='第 '+g.c+'/'+p.cycles+' 轮 · 动作 '+(g.i+1)+'/'+P;
+  else if(g&&g.t!=='cool'){const nw=nextWork(idx);if(nw)sub='下一个：'+nw.name}
+  else if(!g)sub='再按开始可重新训练';
+  $('#cSub').textContent=sub;
+  const n=g?segs[idx+1]:null,nx=$('#nx');
+  nx.style.backgroundColor=n?COL[n.t]:'#333';nx.style.color=n?'#111':'#bbb';
+  $('#nName').textContent=n?n.name:(g?'完成':'—');
+  $('#nTime').textContent=n?mmss(n.d):'';
+  let rp=0,rc=0;
+  if(g){
+    if(g.t==='prep'){rp=P;rc=p.cycles}
+    else if(g.t==='work'||g.t==='rest'){rp=P-g.i;rc=p.cycles-g.c+1}
+    else if(g.t==='crest'){rp=P;rc=p.cycles-g.c}
+  }
+  $('#rP').textContent=rp;$('#rC').textContent=rc;
+  $('#icPlay').style.display=running?'none':'';$('#icPause').style.display=running?'':'none';
+  $('#pLbl').textContent=running?'暂停':finished?'重新开始':(idx===0&&left>=(segs[0]?segs[0].d:0)-.05)?'开始':'继续';
+  $('#bPlay').setAttribute('aria-label',$('#pLbl').textContent);
+}
+$('#bPlay').addEventListener('click',()=>running?pause():start());
+$('#bReset').addEventListener('click',()=>{pause();try{speechSynthesis.cancel()}catch(e){}load()});
+$('#bNext').addEventListener('click',()=>{unlock();jump(idx+1)});
+$('#bPrev').addEventListener('click',()=>{unlock();const g=segs[idx];if(finished){finished=false;jump(segs.length-1);return}
+  if(g&&g.d-remNow()>2)jump(idx);else jump(idx-1)});
+
+/* ---------- 编辑 ---------- */
+let draft=null;
+const dPlan=()=>draft.plans.find(p=>p.id===draft.cur)||draft.plans[0];
+const ROWS=[['prep','准备','开始前的倒数','time',COL.prep],['work','锻炼','默认运动时长','time',COL.work],
+  ['rest','休息','动作之间的休息','time',COL.rest],['_p','周期','= 动作数量，在下方编辑','ro',COL.cool],
+  ['cycles','循环','整套动作重复几轮','count',COL.crest],['crest','循环之间的休息','间歇恢复','time',COL.crest],
+  ['cool','冷却时间','锻炼后的冷却','time',COL.cool]];
+function openEd(){pause();draft=JSON.parse(JSON.stringify(store));$('#ed').hidden=false;renderEd()}
+function renderEd(){
+  const p=dPlan();
+  $('#planSel').innerHTML=draft.plans.map(x=>'<option value="'+esc(x.id)+'"'+(x.id===p.id?' selected':'')+'>'+esc(x.name||'未命名')+'</option>').join('');
+  $('#planName').value=p.name;
+  $('#pDel').disabled=draft.plans.length<2;$('#pDel').style.opacity=draft.plans.length<2?.4:1;
+  $('#rows').innerHTML=ROWS.map(([k,t,s,ty,c])=>{
+    const v=k==='_p'?p.actions.length:ty==='count'?p[k]:short(p[k]);
+    const sub=k==='cycles'?'一个循环是 '+p.actions.length+' 个周期':s;
+    return(ty==='ro'?'<div class="row">':'<button class="row" data-k="'+k+'">')+'<span class="dot" style="background:'+c+'"></span><span class="tx"><b>'+t+'</b><small>'+esc(sub)+'</small></span><span class="v">'+v+'</span>'+(ty==='ro'?'<span class="chev" style="visibility:hidden">›</span></div>':'<span class="chev">›</span></button>');
+  }).join('');
+  $('#acts').innerHTML=p.actions.map((a,i)=>'<div class="act" data-i="'+i+'"><div class="ln"><span class="dot" style="background:'+COL.work+'"></span><input type="text" value="'+esc(a.n)+'" placeholder="动作'+(i+1)+'" maxlength="24" aria-label="动作'+(i+1)+'名称"><button class="tb'+(a.d?'':' def')+'" data-a="t">'+(a.d?short(a.d):'默认')+'</button></div><div class="ops"><button data-a="u"'+(i?'':' disabled style="opacity:.3"')+'>上移</button><button data-a="w"'+(i<p.actions.length-1?'':' disabled style="opacity:.3"')+'>下移</button>'+(p.actions.length>1?'<button data-a="x" class="del">删除</button>':'')+'</div></div>').join('');
+  renderOpts();
+  $('#tot').textContent=mmss(total(build(p)));
+}
+function renderOpts(){
+  if(!draft)return;const s=draft.set;
+  const sw=(k,t,sub)=>'<div class="fld"><span class="tx">'+t+(sub?'<small>'+sub+'</small>':'')+'</span><label class="sw"><input type="checkbox" data-o="'+k+'"'+(s[k]?' checked':'')+' aria-label="'+t+'"><span></span></label></div>';
+  const sel=(k,t,opts)=>'<div class="fld"><label for="o-'+k+'">'+t+'</label><select id="o-'+k+'" data-o="'+k+'">'+opts.map(([v,l])=>'<option value="'+esc(v)+'"'+(String(s[k])===String(v)?' selected':'')+'>'+esc(l)+'</option>').join('')+'</select></div>';
+  $('#opts').innerHTML=sw('voice','语音播报','动作名称、倒数读秒')+sel('count','倒数读秒',[[0,'关闭'],[3,'最后 3 秒'],[5,'最后 5 秒'],[10,'最后 10 秒']])+
+    sw('tick','滴答声','每秒一次')+sel('rate','语速',[[0.9,'慢'],[1.05,'标准'],[1.2,'快'],[1.35,'更快']])+
+    sel('voiceURI','声音',[['','自动'],...voices.map(v=>[v.voiceURI,v.name])])+
+    '<div class="btns"><button id="tryV">试听</button></div>'+
+    sw('mix','与音乐混音','不打断正在播放的音乐')+sw('wake','屏幕常亮','训练中不自动锁屏');
+}
+$('#planSel').addEventListener('change',e=>{draft.cur=e.target.value;renderEd()});
+$('#planName').addEventListener('input',e=>{dPlan().name=e.target.value;const o=$('#planSel').selectedOptions[0];if(o)o.textContent=e.target.value||'未命名'});
+$('#pNew').addEventListener('click',()=>{const p={...defPlan(),name:'新方案',actions:[{n:'',d:0}]};draft.plans.push(p);draft.cur=p.id;renderEd()});
+$('#pDup').addEventListener('click',()=>{const p=JSON.parse(JSON.stringify(dPlan()));p.id=uid();p.name=(p.name||'方案')+' 副本';draft.plans.push(p);draft.cur=p.id;renderEd()});
+let delArm=0;
+$('#pDel').addEventListener('click',e=>{if(draft.plans.length<2)return;
+  if(Date.now()-delArm>3000){delArm=Date.now();e.target.textContent='再按一次确认';setTimeout(()=>{e.target.textContent='删除'},3000);return}
+  delArm=0;draft.plans=draft.plans.filter(x=>x.id!==draft.cur);draft.cur=draft.plans[0].id;renderEd()});
+$('#rows').addEventListener('click',e=>{const b=e.target.closest('[data-k]');if(!b)return;const k=b.dataset.k,r=ROWS.find(x=>x[0]===k),p=dPlan();
+  pick(r[1],r[3],p[k],{min:(k==='work'||k==='cycles')?1:0},v=>{p[k]=v;renderEd()})});
+$('#acts').addEventListener('input',e=>{if(e.target.tagName!=='INPUT')return;const i=+e.target.closest('.act').dataset.i;dPlan().actions[i].n=e.target.value});
+$('#acts').addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(!b)return;const i=+b.closest('.act').dataset.i,A=dPlan().actions,a=b.dataset.a;
+  if(a==='t'){pick(A[i].n||'动作'+(i+1),'time',A[i].d||dPlan().work,{min:1,def:true},v=>{A[i].d=v;renderEd()});return}
+  if(a==='u'&&i>0)[A[i-1],A[i]]=[A[i],A[i-1]];
+  if(a==='w'&&i<A.length-1)[A[i+1],A[i]]=[A[i],A[i+1]];
+  if(a==='x'&&A.length>1)A.splice(i,1);
+  renderEd()});
+$('#addAct').addEventListener('click',()=>{dPlan().actions.push({n:'',d:0});renderEd();const ins=$('#acts').querySelectorAll('input');const last=ins[ins.length-1];if(last){last.focus();last.scrollIntoView({block:'center'})}});
+$('#opts').addEventListener('change',e=>{const k=e.target.dataset.o;if(!k)return;const s=draft.set;
+  s[k]=e.target.type==='checkbox'?e.target.checked:(k==='voiceURI'?e.target.value:+e.target.value)});
+$('#opts').addEventListener('click',e=>{if(e.target.id!=='tryV')return;unlock();speak('臀桥，1分钟。5，4，3',{set:{...draft.set,voice:true},cancel:true})});
+$('#edCancel').addEventListener('click',()=>{draft=null;$('#ed').hidden=true});
+$('#edSave').addEventListener('click',()=>{store=draft;draft=null;save();setSession();$('#ed').hidden=true;load()});
+
+/* ---------- 选择器 ---------- */
+let pkCb=null;
+function pick(title,type,val,o,cb){
+  pkCb=cb;$('#pkT').textContent=title;
+  const opt=(n,sel,lab)=>Array.from({length:n},(_,i)=>'<option value="'+i+'"'+(i===sel?' selected':'')+'>'+(lab?lab(i):i)+'</option>').join('');
+  if(type==='count'){
+    $('#pkB').innerHTML='<select id="pkN" aria-label="次数">'+Array.from({length:30},(_,i)=>'<option value="'+(i+1)+'"'+(i+1===val?' selected':'')+'>'+(i+1)+'</option>').join('')+'</select> 次';
+    $('#pkQ').innerHTML='';
+  }else{
+    const p2=i=>String(i).padStart(2,'0');
+    $('#pkB').innerHTML='<select id="pkM" aria-label="分">'+opt(60,Math.floor(val/60),p2)+'</select> 分 <select id="pkS" aria-label="秒">'+opt(60,val%60,p2)+'</select> 秒';
+    $('#pkQ').innerHTML=[0,5,10,15,20,30,45,60,90,120,180].filter(v=>v>=o.min).map(v=>'<button data-v="'+v+'">'+(v?sayD(v):'不需要')+'</button>').join('');
+  }
+  $('#pkDef').hidden=!o.def;
+  $('#pk').dataset.min=o.min;$('#pk').dataset.type=type;$('#pk').hidden=false;
+}
+const pkClose=()=>{$('#pk').hidden=true;pkCb=null};
+function pkDone(v){const min=+$('#pk').dataset.min;const cb=pkCb;pkClose();if(cb)cb(v===0&&min===0?0:Math.max(min,v))}
+$('#pkNo').addEventListener('click',pkClose);
+$('#pk').addEventListener('click',e=>{if(e.target.id==='pk')pkClose()});
+$('#pkOk').addEventListener('click',()=>{if($('#pk').dataset.type==='count')pkDone(+$('#pkN').value);else pkDone(+$('#pkM').value*60+ +$('#pkS').value)});
+$('#pkQ').addEventListener('click',e=>{const b=e.target.closest('[data-v]');if(b)pkDone(+b.dataset.v)});
+$('#pkDef').addEventListener('click',()=>{const cb=pkCb;pkClose();if(cb)cb(0)});
+
+$('#bEdit').addEventListener('click',openEd);
+load();
+if('serviceWorker' in navigator&&location.protocol==='https:'){navigator.serviceWorker.register('sw.js').catch(()=>{})}
+}
+</script>
+</body>
+</html>
