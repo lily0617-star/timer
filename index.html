@@ -122,9 +122,9 @@ select,.fld input[type=text]{background:#2e2e2e;color:#fff;border:0;border-radiu
   <section class="cur" id="cur"><div class="nm" id="cName"></div><div class="tm" id="cTime"></div><div class="sub" id="cSub"></div></section>
   <section class="nx" id="nx"><div class="nm" id="nName"></div><div class="tm" id="nTime"></div></section>
   <section class="ctl">
-    <div class="cnt"><b id="rP" style="color:var(--b)">0</b><span>剩余周期</span></div>
+    <div class="cnt"><b id="rP" style="color:var(--b)">0</b><span>剩余动作</span></div>
     <div><button class="play" id="bPlay" aria-label="开始"><svg id="icPlay" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5z"/></svg><svg id="icPause" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="5.5" y="4.5" width="4.5" height="15" rx="1"/><rect x="14" y="4.5" width="4.5" height="15" rx="1"/></svg></button><span class="plbl" id="pLbl">开始</span></div>
-    <div class="cnt"><b id="rC" style="color:var(--y)">0</b><span>剩余循环</span></div>
+    <div class="cnt"><b id="rC" style="color:var(--y)">0</b><span>剩余次数</span></div>
   </section>
   <nav class="sm">
     <button id="bPrev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg>上一段</button>
@@ -139,7 +139,7 @@ select,.fld input[type=text]{background:#2e2e2e;color:#fff;border:0;border-radiu
     <div class="fld"><select id="planSel" style="flex:1"></select></div>
     <div class="fld"><input type="text" id="planName" maxlength="20" aria-label="方案名称" placeholder="方案名称"></div>
     <div class="btns"><button id="pNew">新建</button><button id="pDup">复制</button><button id="pDel" class="del">删除</button></div>
-    <div class="gh">间隔</div>
+    <div class="gh">默认设置<small>动作没有单独设置时，使用这里的时长</small></div>
     <div id="rows"></div>
     <div class="gh">动作<small>每个动作可单独设：每次时长、次数、次间休息、动作后休息</small></div>
     <div id="acts"></div>
@@ -185,19 +185,18 @@ const sayD=s=>{const m=Math.floor(s/60),x=s%60;return m?(m+'分'+(x?x+'秒':'钟
 function build(p){
   const A=p.actions.length?p.actions:[{n:'锻炼',d:0}],P=A.length,out=[];
   if(p.prep>0)out.push({t:'prep',name:'准备',d:p.prep,c:1,i:0});
-  for(let c=1;c<=p.cycles;c++)for(let i=0;i<P;i++){
+  for(let c=1;c<=1;c++)for(let i=0;i<P;i++){
     const a=A[i],K=Math.max(1,a.r||1),name=(a.n||'').trim()||('动作'+(i+1)),rv=a.rest==null?p.rest:a.rest;
     for(let k=1;k<=K;k++){
       out.push({t:'work',name,d:a.d||p.work,c,i,k,K});
       if(k<K&&a.rr>0)out.push({t:'rest',name:'休息',d:a.rr,c,i,rep:true});
     }
     if(i<P-1){if(rv>0)out.push({t:'rest',name:'休息',d:rv,c,i})}
-    else if(c<p.cycles){
+    else if(false){
       if(p.crest>0)out.push({t:'crest',name:'循环间休息',d:p.crest,c,i});
       else if(rv>0)out.push({t:'rest',name:'休息',d:rv,c,i});
     }
   }
-  if(p.cool>0)out.push({t:'cool',name:'冷却',d:p.cool,c:p.cycles,i:P-1});
   return out;
 }
 const total=segs=>segs.reduce((a,g)=>a+g.d,0);
@@ -317,7 +316,7 @@ function render(){
   $('#cTime').textContent=mmss(rem);
   let sub='';
   const lab=x=>x.t==='work'&&x.K>1?x.name+' 第'+x.k+'/'+x.K+'次':x.name;
-  if(g&&g.t==='work')sub=(g.K>1?'第 '+g.k+'/'+g.K+' 次 · ':'')+'动作 '+(g.i+1)+'/'+P+' · 第 '+g.c+'/'+p.cycles+' 轮';
+  if(g&&g.t==='work')sub=(g.K>1?'第 '+g.k+'/'+g.K+' 次 · ':'')+'动作 '+(g.i+1)+'/'+P;
   else if(g&&g.t!=='cool'){const nw=nextWork(idx);if(nw)sub='下一个：'+lab(nw)}
   else if(!g)sub='再按开始可重新训练';
   $('#cSub').textContent=sub;
@@ -326,11 +325,8 @@ function render(){
   $('#nName').textContent=n?lab(n):(g?'完成':'—');
   $('#nTime').textContent=n?mmss(n.d):'';
   let rp=0,rc=0;
-  if(g){
-    if(g.t==='prep'){rp=P;rc=p.cycles}
-    else if(g.t==='work'||g.t==='rest'){rp=P-g.i;rc=p.cycles-g.c+1}
-    else if(g.t==='crest'){rp=P;rc=p.cycles-g.c}
-  }
+  const nw=g?(g.t==='work'?g:nextWork(idx)):null;
+  if(nw){rp=P-nw.i;rc=nw.K-nw.k+1}
   $('#rP').textContent=rp;$('#rC').textContent=rc;
   $('#icPlay').style.display=running?'none':'';$('#icPause').style.display=running?'':'none';
   $('#pLbl').textContent=running?'暂停':finished?'重新开始':(idx===0&&left>=(segs[0]?segs[0].d:0)-.05)?'开始':'继续';
@@ -345,10 +341,8 @@ $('#bPrev').addEventListener('click',()=>{unlock();const g=segs[idx];if(finished
 /* ---------- 编辑 ---------- */
 let draft=null;
 const dPlan=()=>draft.plans.find(p=>p.id===draft.cur)||draft.plans[0];
-const ROWS=[['prep','准备','开始前的倒数','time',COL.prep],['work','锻炼','默认运动时长','time',COL.work],
-  ['rest','休息','动作之间的默认休息','time',COL.rest],['_p','周期','= 动作数量，在下方编辑','ro',COL.cool],
-  ['cycles','循环','整套动作重复几轮','count',COL.crest],['crest','循环之间的休息','间歇恢复','time',COL.crest],
-  ['cool','冷却时间','锻炼后的冷却','time',COL.cool]];
+const ROWS=[['prep','准备','开始前的倒数','time',COL.prep],['work','锻炼','动作的默认时长','time',COL.work],
+  ['rest','休息','动作之间的默认休息','time',COL.rest]];
 function openEd(){pause();draft=JSON.parse(JSON.stringify(store));$('#ed').hidden=false;renderEd()}
 const chip=(a,l,v)=>'<button class="chip" data-a="'+a+'">'+l+' <b>'+esc(v)+'</b></button>';
 function renderEd(){
@@ -361,7 +355,7 @@ function renderEd(){
     const sub=k==='cycles'?'一个循环是 '+p.actions.length+' 个周期':s;
     return(ty==='ro'?'<div class="row">':'<button class="row" data-k="'+k+'">')+'<span class="dot" style="background:'+c+'"></span><span class="tx"><b>'+t+'</b><small>'+esc(sub)+'</small></span><span class="v">'+v+'</span>'+(ty==='ro'?'<span class="chev" style="visibility:hidden">›</span></div>':'<span class="chev">›</span></button>');
   }).join('');
-  $('#acts').innerHTML=p.actions.map((a,i)=>'<div class="act" data-i="'+i+'"><div class="ln"><span class="dot" style="background:'+COL.work+'"></span><input type="text" value="'+esc(a.n)+'" placeholder="动作'+(i+1)+'" maxlength="24" aria-label="动作'+(i+1)+'名称"><button class="tb'+(a.d?'':' def')+'" data-a="t" aria-label="每次时长">'+(a.d?short(a.d):'默认')+'</button></div><div class="chips">'+chip('r','次数','×'+(a.r||1))+((a.r||1)>1?chip('rr','次间休息',a.rr?short(a.rr):'不休息'):'')+chip('rest','动作后休息',a.rest==null?'默认 '+short(p.rest):a.rest?short(a.rest):'不休息')+'</div><div class="ops"><button data-a="u"'+(i?'':' disabled style="opacity:.3"')+'>上移</button><button data-a="w"'+(i<p.actions.length-1?'':' disabled style="opacity:.3"')+'>下移</button>'+(p.actions.length>1?'<button data-a="x" class="del">删除</button>':'')+'</div></div>').join('');
+  $('#acts').innerHTML=p.actions.map((a,i)=>'<div class="act" data-i="'+i+'"><div class="ln"><span class="dot" style="background:'+COL.work+'"></span><input type="text" value="'+esc(a.n)+'" placeholder="动作'+(i+1)+'" maxlength="24" aria-label="动作'+(i+1)+'名称"><button class="tb'+(a.d?'':' def')+'" data-a="t" aria-label="每次时长">'+(a.d?short(a.d):'默认')+'</button></div><div class="chips">'+chip('r','次数','×'+(a.r||1))+((a.r||1)>1?chip('rr','次间休息',a.rr?short(a.rr):'不休息'):'')+chip('rest','动作后休息',a.rest==null?'默认 '+short(p.rest):a.rest?short(a.rest):'不休息')+'</div><div class="ops"><button data-a="u"'+(i?'':' disabled style="opacity:.3"')+'>上移</button><button data-a="w"'+(i<p.actions.length-1?'':' disabled style="opacity:.3"')+'>下移</button><button data-a="c">复制</button>'+(p.actions.length>1?'<button data-a="x" class="del">删除</button>':'')+'</div></div>').join('');
   renderOpts();
   $('#tot').textContent=mmss(total(build(p)));
 }
@@ -395,6 +389,7 @@ $('#acts').addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(
   if(a==='u'&&i>0)[A[i-1],A[i]]=[A[i],A[i-1]];
   if(a==='w'&&i<A.length-1)[A[i+1],A[i]]=[A[i],A[i+1]];
   if(a==='x'&&A.length>1)A.splice(i,1);
+  if(a==='c'){A.splice(i+1,0,JSON.parse(JSON.stringify(A[i])));renderEd();const el=$('#acts').querySelectorAll('.act')[i+1];if(el){el.scrollIntoView({block:'center'});const inp=el.querySelector('input');if(inp){inp.focus();const L=inp.value.length;try{inp.setSelectionRange(L,L)}catch(e){}}}return}
   renderEd()});
 $('#addAct').addEventListener('click',()=>{dPlan().actions.push({n:'',d:0});renderEd();const ins=$('#acts').querySelectorAll('input');const last=ins[ins.length-1];if(last){last.focus();last.scrollIntoView({block:'center'})}});
 $('#opts').addEventListener('change',e=>{const k=e.target.dataset.o;if(!k)return;const s=draft.set;
