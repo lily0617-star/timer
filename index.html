@@ -72,6 +72,9 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .act input{flex:1;background:#2e2e2e;border:0;border-radius:8px;color:#fff;font-size:17px;font-weight:700;padding:10px;-webkit-user-select:text;user-select:text}
 .act .tb{background:#2e2e2e;border:0;border-radius:8px;font:700 26px/1 var(--num);padding:8px 10px;min-width:72px;min-height:44px}
 .act .tb.def{color:var(--m);font:700 15px/1 -apple-system,"PingFang SC",sans-serif}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 0 30px}
+.chip{background:#2e2e2e;border:0;border-radius:16px;padding:0 12px;min-height:34px;font-size:13px;font-weight:700;color:var(--m)}
+.chip b{color:#fff;font-weight:800;margin-left:2px}
 .act .ops{display:flex;justify-content:flex-end;gap:4px;margin-top:2px}
 .act .ops button{background:none;border:0;color:var(--m);font-size:14px;min-height:36px;padding:0 10px}
 .act .ops .del{color:var(--r)}
@@ -138,7 +141,7 @@ select,.fld input[type=text]{background:#2e2e2e;color:#fff;border:0;border-radiu
     <div class="btns"><button id="pNew">新建</button><button id="pDup">复制</button><button id="pDel" class="del">删除</button></div>
     <div class="gh">间隔</div>
     <div id="rows"></div>
-    <div class="gh">动作<small>每个动作 = 1 个周期，可单独设时长</small></div>
+    <div class="gh">动作<small>每个动作可单独设：每次时长、次数、次间休息、动作后休息</small></div>
     <div id="acts"></div>
     <button class="add" id="addAct">＋ 添加动作</button>
     <div class="gh">声音与显示</div>
@@ -153,7 +156,7 @@ select,.fld input[type=text]{background:#2e2e2e;color:#fff;border:0;border-radiu
     <div class="pkh"><button id="pkNo">取消</button><b id="pkT"></b><button id="pkOk" class="go">确定</button></div>
     <div class="pkb" id="pkB"></div>
     <div class="qk" id="pkQ"></div>
-    <button id="pkDef" hidden>使用默认锻炼时长</button>
+    <button id="pkDef" hidden>使用默认</button>
   </div>
 </div>
 
@@ -183,11 +186,15 @@ function build(p){
   const A=p.actions.length?p.actions:[{n:'锻炼',d:0}],P=A.length,out=[];
   if(p.prep>0)out.push({t:'prep',name:'准备',d:p.prep,c:1,i:0});
   for(let c=1;c<=p.cycles;c++)for(let i=0;i<P;i++){
-    out.push({t:'work',name:A[i].n.trim()||('动作'+(i+1)),d:A[i].d||p.work,c,i});
-    if(i<P-1){if(p.rest>0)out.push({t:'rest',name:'休息',d:p.rest,c,i})}
+    const a=A[i],K=Math.max(1,a.r||1),name=(a.n||'').trim()||('动作'+(i+1)),rv=a.rest==null?p.rest:a.rest;
+    for(let k=1;k<=K;k++){
+      out.push({t:'work',name,d:a.d||p.work,c,i,k,K});
+      if(k<K&&a.rr>0)out.push({t:'rest',name:'休息',d:a.rr,c,i,rep:true});
+    }
+    if(i<P-1){if(rv>0)out.push({t:'rest',name:'休息',d:rv,c,i})}
     else if(c<p.cycles){
       if(p.crest>0)out.push({t:'crest',name:'循环间休息',d:p.crest,c,i});
-      else if(p.rest>0)out.push({t:'rest',name:'休息',d:p.rest,c,i});
+      else if(rv>0)out.push({t:'rest',name:'休息',d:rv,c,i});
     }
   }
   if(p.cool>0)out.push({t:'cool',name:'冷却',d:p.cool,c:p.cycles,i:P-1});
@@ -245,21 +252,23 @@ function annText(i){
   const g=segs[i],nx=nextWork(i);
   switch(g.t){
     case'prep':return'准备'+(nx?'，第一个动作，'+nx.name:'');
-    case'work':return(g.i===0&&g.c>1?'第'+g.c+'轮，':'')+g.name+'，'+sayD(g.d);
-    case'rest':return'休息'+sayD(g.d)+(nx?'，下一个，'+nx.name:'');
+    case'work':
+      if(g.k>1)return g.k===g.K?'最后一次':'第'+g.k+'次';
+      return(g.i===0&&g.c>1?'第'+g.c+'轮，':'')+g.name+'，'+(g.K>1?g.K+'次，每次'+sayD(g.d):sayD(g.d));
+    case'rest':return'休息'+sayD(g.d)+(g.rep?'':(nx?'，下一个，'+nx.name:''));
     case'crest':return'第'+g.c+'轮完成，休息'+sayD(g.d)+(nx?'，下一轮，'+nx.name:'');
     case'cool':return'冷却'+sayD(g.d);
   }
   return'';
 }
-function enter(i){announced=i;beepStart();speak(annText(i),{ann:true,cancel:true})}
+function enter(i){announced=i;const g=segs[i];if(g.t==='work'&&g.k>1&&!(segs[i-1]&&segs[i-1].rep))beepShort();else beepStart();speak(annText(i),{ann:true,cancel:true})}
 function secondCue(s){
   const g=segs[idx],set=store.set;
   if(!g||s>=g.d||s<=0)return;
-  const n=set.count;
-  if(set.voice&&n&&s<=n&&!annBusy){speak(String(s),{cancel:true});return}
+  const n=set.count,longSeg=g.d>=Math.max(6,n*2);
+  if(set.voice&&n&&s<=n&&longSeg&&!annBusy){speak(String(s),{cancel:true});return}
   if(set.voice&&s===10&&n<10&&g.d>=20&&!annBusy){speak('还剩10秒',{cancel:true});return}
-  if((!set.voice||!n)&&s<=3){beepShort();return}
+  if((!set.voice||!n)&&s<=3&&longSeg){beepShort();return}
   if(set.tick)tick(s);
 }
 function start(){
@@ -307,13 +316,14 @@ function render(){
   const L=[...name].length;cur.style.setProperty('--fs',L<=3?'min(19vw,96px)':L<=5?'min(14vw,76px)':L<=8?'min(10vw,56px)':'min(8vw,44px)');
   $('#cTime').textContent=mmss(rem);
   let sub='';
-  if(g&&g.t==='work')sub='第 '+g.c+'/'+p.cycles+' 轮 · 动作 '+(g.i+1)+'/'+P;
-  else if(g&&g.t!=='cool'){const nw=nextWork(idx);if(nw)sub='下一个：'+nw.name}
+  const lab=x=>x.t==='work'&&x.K>1?x.name+' 第'+x.k+'/'+x.K+'次':x.name;
+  if(g&&g.t==='work')sub=(g.K>1?'第 '+g.k+'/'+g.K+' 次 · ':'')+'动作 '+(g.i+1)+'/'+P+' · 第 '+g.c+'/'+p.cycles+' 轮';
+  else if(g&&g.t!=='cool'){const nw=nextWork(idx);if(nw)sub='下一个：'+lab(nw)}
   else if(!g)sub='再按开始可重新训练';
   $('#cSub').textContent=sub;
   const n=g?segs[idx+1]:null,nx=$('#nx');
   nx.style.backgroundColor=n?COL[n.t]:'#333';nx.style.color=n?'#111':'#bbb';
-  $('#nName').textContent=n?n.name:(g?'完成':'—');
+  $('#nName').textContent=n?lab(n):(g?'完成':'—');
   $('#nTime').textContent=n?mmss(n.d):'';
   let rp=0,rc=0;
   if(g){
@@ -336,10 +346,11 @@ $('#bPrev').addEventListener('click',()=>{unlock();const g=segs[idx];if(finished
 let draft=null;
 const dPlan=()=>draft.plans.find(p=>p.id===draft.cur)||draft.plans[0];
 const ROWS=[['prep','准备','开始前的倒数','time',COL.prep],['work','锻炼','默认运动时长','time',COL.work],
-  ['rest','休息','动作之间的休息','time',COL.rest],['_p','周期','= 动作数量，在下方编辑','ro',COL.cool],
+  ['rest','休息','动作之间的默认休息','time',COL.rest],['_p','周期','= 动作数量，在下方编辑','ro',COL.cool],
   ['cycles','循环','整套动作重复几轮','count',COL.crest],['crest','循环之间的休息','间歇恢复','time',COL.crest],
   ['cool','冷却时间','锻炼后的冷却','time',COL.cool]];
 function openEd(){pause();draft=JSON.parse(JSON.stringify(store));$('#ed').hidden=false;renderEd()}
+const chip=(a,l,v)=>'<button class="chip" data-a="'+a+'">'+l+' <b>'+esc(v)+'</b></button>';
 function renderEd(){
   const p=dPlan();
   $('#planSel').innerHTML=draft.plans.map(x=>'<option value="'+esc(x.id)+'"'+(x.id===p.id?' selected':'')+'>'+esc(x.name||'未命名')+'</option>').join('');
@@ -350,7 +361,7 @@ function renderEd(){
     const sub=k==='cycles'?'一个循环是 '+p.actions.length+' 个周期':s;
     return(ty==='ro'?'<div class="row">':'<button class="row" data-k="'+k+'">')+'<span class="dot" style="background:'+c+'"></span><span class="tx"><b>'+t+'</b><small>'+esc(sub)+'</small></span><span class="v">'+v+'</span>'+(ty==='ro'?'<span class="chev" style="visibility:hidden">›</span></div>':'<span class="chev">›</span></button>');
   }).join('');
-  $('#acts').innerHTML=p.actions.map((a,i)=>'<div class="act" data-i="'+i+'"><div class="ln"><span class="dot" style="background:'+COL.work+'"></span><input type="text" value="'+esc(a.n)+'" placeholder="动作'+(i+1)+'" maxlength="24" aria-label="动作'+(i+1)+'名称"><button class="tb'+(a.d?'':' def')+'" data-a="t">'+(a.d?short(a.d):'默认')+'</button></div><div class="ops"><button data-a="u"'+(i?'':' disabled style="opacity:.3"')+'>上移</button><button data-a="w"'+(i<p.actions.length-1?'':' disabled style="opacity:.3"')+'>下移</button>'+(p.actions.length>1?'<button data-a="x" class="del">删除</button>':'')+'</div></div>').join('');
+  $('#acts').innerHTML=p.actions.map((a,i)=>'<div class="act" data-i="'+i+'"><div class="ln"><span class="dot" style="background:'+COL.work+'"></span><input type="text" value="'+esc(a.n)+'" placeholder="动作'+(i+1)+'" maxlength="24" aria-label="动作'+(i+1)+'名称"><button class="tb'+(a.d?'':' def')+'" data-a="t" aria-label="每次时长">'+(a.d?short(a.d):'默认')+'</button></div><div class="chips">'+chip('r','次数','×'+(a.r||1))+((a.r||1)>1?chip('rr','次间休息',a.rr?short(a.rr):'不休息'):'')+chip('rest','动作后休息',a.rest==null?'默认 '+short(p.rest):a.rest?short(a.rest):'不休息')+'</div><div class="ops"><button data-a="u"'+(i?'':' disabled style="opacity:.3"')+'>上移</button><button data-a="w"'+(i<p.actions.length-1?'':' disabled style="opacity:.3"')+'>下移</button>'+(p.actions.length>1?'<button data-a="x" class="del">删除</button>':'')+'</div></div>').join('');
   renderOpts();
   $('#tot').textContent=mmss(total(build(p)));
 }
@@ -376,7 +387,11 @@ $('#rows').addEventListener('click',e=>{const b=e.target.closest('[data-k]');if(
   pick(r[1],r[3],p[k],{min:(k==='work'||k==='cycles')?1:0},v=>{p[k]=v;renderEd()})});
 $('#acts').addEventListener('input',e=>{if(e.target.tagName!=='INPUT')return;const i=+e.target.closest('.act').dataset.i;dPlan().actions[i].n=e.target.value});
 $('#acts').addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(!b)return;const i=+b.closest('.act').dataset.i,A=dPlan().actions,a=b.dataset.a;
-  if(a==='t'){pick(A[i].n||'动作'+(i+1),'time',A[i].d||dPlan().work,{min:1,def:true},v=>{A[i].d=v;renderEd()});return}
+  const nm=A[i].n||'动作'+(i+1);
+  if(a==='t'){pick(nm+' · 每次时长','time',A[i].d||dPlan().work,{min:1,def:'使用默认锻炼时长'},v=>{A[i].d=v||0;renderEd()});return}
+  if(a==='r'){pick(nm+' · 次数','count',A[i].r||1,{min:1,max:100},v=>{A[i].r=v;renderEd()});return}
+  if(a==='rr'){pick(nm+' · 次间休息','time',A[i].rr||0,{min:0},v=>{A[i].rr=v||0;renderEd()});return}
+  if(a==='rest'){pick(nm+' · 动作后休息','time',A[i].rest==null?dPlan().rest:A[i].rest,{min:0,def:'使用默认休息时长'},v=>{A[i].rest=v;renderEd()});return}
   if(a==='u'&&i>0)[A[i-1],A[i]]=[A[i],A[i-1]];
   if(a==='w'&&i<A.length-1)[A[i+1],A[i]]=[A[i],A[i+1]];
   if(a==='x'&&A.length>1)A.splice(i,1);
@@ -394,14 +409,14 @@ function pick(title,type,val,o,cb){
   pkCb=cb;$('#pkT').textContent=title;
   const opt=(n,sel,lab)=>Array.from({length:n},(_,i)=>'<option value="'+i+'"'+(i===sel?' selected':'')+'>'+(lab?lab(i):i)+'</option>').join('');
   if(type==='count'){
-    $('#pkB').innerHTML='<select id="pkN" aria-label="次数">'+Array.from({length:30},(_,i)=>'<option value="'+(i+1)+'"'+(i+1===val?' selected':'')+'>'+(i+1)+'</option>').join('')+'</select> 次';
+    $('#pkB').innerHTML='<select id="pkN" aria-label="次数">'+Array.from({length:o.max||30},(_,i)=>'<option value="'+(i+1)+'"'+(i+1===val?' selected':'')+'>'+(i+1)+'</option>').join('')+'</select> 次';
     $('#pkQ').innerHTML='';
   }else{
     const p2=i=>String(i).padStart(2,'0');
     $('#pkB').innerHTML='<select id="pkM" aria-label="分">'+opt(60,Math.floor(val/60),p2)+'</select> 分 <select id="pkS" aria-label="秒">'+opt(60,val%60,p2)+'</select> 秒';
     $('#pkQ').innerHTML=[0,5,10,15,20,30,45,60,90,120,180].filter(v=>v>=o.min).map(v=>'<button data-v="'+v+'">'+(v?sayD(v):'不需要')+'</button>').join('');
   }
-  $('#pkDef').hidden=!o.def;
+  $('#pkDef').hidden=!o.def;if(o.def)$('#pkDef').textContent=o.def;
   $('#pk').dataset.min=o.min;$('#pk').dataset.type=type;$('#pk').hidden=false;
 }
 const pkClose=()=>{$('#pk').hidden=true;pkCb=null};
@@ -410,7 +425,7 @@ $('#pkNo').addEventListener('click',pkClose);
 $('#pk').addEventListener('click',e=>{if(e.target.id==='pk')pkClose()});
 $('#pkOk').addEventListener('click',()=>{if($('#pk').dataset.type==='count')pkDone(+$('#pkN').value);else pkDone(+$('#pkM').value*60+ +$('#pkS').value)});
 $('#pkQ').addEventListener('click',e=>{const b=e.target.closest('[data-v]');if(b)pkDone(+b.dataset.v)});
-$('#pkDef').addEventListener('click',()=>{const cb=pkCb;pkClose();if(cb)cb(0)});
+$('#pkDef').addEventListener('click',()=>{const cb=pkCb;pkClose();if(cb)cb(null)});
 
 $('#bEdit').addEventListener('click',openEd);
 load();
